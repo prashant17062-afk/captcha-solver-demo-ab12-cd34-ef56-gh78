@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<!--
+Academic Captcha Solver - index.html
+MIT License
+
+Copyright (c) 2023 AI Web Developer
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+-->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Academic Captcha Solver</title>
+    <!--
+    This page uses Tesseract.js for client-side Optical Character Recognition (OCR)
+    to solve captchas. It's designed for educational purposes to demonstrate
+    basic image processing and text recognition in a web browser.
+    -->
+    <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 20px;
+            background-color: #f4f7f6;
+            color: #333;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        p {
+            margin-bottom: 10px;
+        }
+        #captchaImage {
+            display: block;
+            margin: 20px auto;
+            max-width: 100%;
+            height: auto;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .status, .result {
+            font-weight: bold;
+            margin-top: 15px;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .status {
+            background-color: #e3f2fd; /* Light blue */
+            color: #2196f3; /* Blue */
+        }
+        .result {
+            background-color: #e8f5e9; /* Light green */
+            color: #4caf50; /* Green */
+        }
+        .error {
+            background-color: #ffebee; /* Light red */
+            color: #f44336; /* Red */
+        }
+        .loading-spinner {
+            display: inline-block;
+            width: 1em;
+            height: 1em;
+            border: 0.1em solid currentColor;
+            border-right-color: transparent;
+            border-radius: 50%;
+            animation: spinner-border .75s linear infinite;
+        }
+        @keyframes spinner-border {
+            to { transform: rotate(360deg); }
+        }
+        footer {
+            margin-top: 40px;
+            font-size: 0.8em;
+            text-align: center;
+            color: #777;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Academic Captcha Solver</h1>
+
+        <p><strong>Captcha Image URL:</strong> <span id="displayImageUrl">Loading...</span></p>
+        
+        <!-- The image tag where the captcha will be displayed -->
+        <img id="captchaImage" src="" alt="Captcha Image">
+
+        <p class="status"><strong>Status:</strong> <span id="statusText"><span class="loading-spinner"></span> Initializing...</span></p>
+        <p class="result"><strong>Solved Captcha:</strong> <span id="solvedCaptchaText">Awaiting solution...</span></p>
+    </div>
+
+    <footer>
+        <p>MIT License &copy; 2023 AI Web Developer. All rights reserved.</p>
+        <p>This project uses <a href="https://tesseract.projectnaptha.com/" target="_blank">Tesseract.js</a> for OCR.</p>
+    </footer>
+
+    <script>
+        // Default captcha image URL if none is provided via the URL parameter.
+        // This acts as a stand-in for the "attached sample" mentioned in the requirements.
+        // For demonstration, we use a publicly accessible captcha-like image.
+        const DEFAULT_CAPTCHA_URL = "https://assets.website-files.com/5f72782e3f533a1e16f31627/609d17d5c9075775c742c3d5_captcha.png";
+        
+        /**
+         * Initializes the Captcha Solver.
+         * Fetches the image URL, displays it, and attempts to solve it using Tesseract.js.
+         */
+        document.addEventListener('DOMContentLoaded', async () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const imageUrlFromParam = urlParams.get('url');
+            
+            // Determine the final image URL: use parameter if present, otherwise default.
+            const finalImageUrl = imageUrlFromParam || DEFAULT_CAPTCHA_URL;
+
+            // Get references to HTML elements
+            const displayImageUrlElem = document.getElementById('displayImageUrl');
+            const captchaImageElem = document.getElementById('captchaImage');
+            const statusTextElem = document.getElementById('statusText');
+            const solvedCaptchaTextElem = document.getElementById('solvedCaptchaText');
+            const statusParagraph = document.querySelector('.status'); // For changing background/color
+
+            // Display the URL and set the image source
+            displayImageUrlElem.textContent = finalImageUrl;
+            captchaImageElem.src = finalImageUrl;
+            captchaImageElem.alt = `Captcha from ${finalImageUrl}`;
+
+            // Reset status and result displays
+            statusTextElem.innerHTML = '<span class="loading-spinner"></span> Loading image and initializing OCR...';
+            statusParagraph.classList.remove('error', 'result');
+            statusParagraph.classList.add('status');
+            solvedCaptchaTextElem.textContent = 'Awaiting solution...';
+
+            let worker;
+            try {
+                // Create a Tesseract.js worker with the English language pack.
+                // This might download language data on first run, which takes time.
+                statusTextElem.innerHTML = '<span class="loading-spinner"></span> Initializing Tesseract.js worker (this may take a moment on first load)...';
+                worker = await Tesseract.createWorker('eng');
+
+                // Perform OCR on the image.
+                statusTextElem.innerHTML = '<span class="loading-spinner"></span> Recognizing text...';
+                const { data: { text } } = await worker.recognize(finalImageUrl);
+                
+                // Display the solved text.
+                // Tesseract often returns extra whitespace/newlines, so trim it.
+                solvedCaptchaTextElem.textContent = text.trim() || 'No text recognized.';
+                statusTextElem.innerHTML = 'Captcha solved successfully!';
+                statusParagraph.classList.remove('status');
+                statusParagraph.classList.add('result');
+
+            } catch (error) {
+                // Handle any errors during the OCR process
+                console.error('Error solving captcha:', error);
+                solvedCaptchaTextElem.textContent = 'Failed to solve captcha.';
+                statusTextElem.textContent = `Error: ${error.message || 'An unknown error occurred.'}`;
+                statusParagraph.classList.remove('status', 'result');
+                statusParagraph.classList.add('error');
+            } finally {
+                // Terminate the worker to free up resources.
+                if (worker) {
+                    await worker.terminate();
+                }
+            }
+        });
+    </script>
+</body>
+</html>
